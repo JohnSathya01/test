@@ -128,7 +128,7 @@ describe('LoginScreen Component', () => {
   test('handles login error with specific error codes', async () => {
     const testCases = [
       { code: 'EX_7.1', expectedMessage: 'Please enter a valid email address or password' },
-      { code: 'EX_7.2', expectedMessage: 'Too many unsuccessful login attempts. Please try again later.' },
+      { code: 'EX_7.2', expectedMessage: 'Too many unsuccessful login attempts. Your account has been locked. Please try again after 15 minutes.' },
       { code: 'EX_7.3', expectedMessage: 'Invalid credentials' },
       { code: 'EX_7.5', expectedMessage: 'This account has been blocked.' },
     ];
@@ -211,6 +211,7 @@ describe('LoginScreen Component', () => {
     // Mock authenticated state
     localStorage.setItem('authToken', 'mock-token');
     localStorage.setItem('user', JSON.stringify({ id: '1', email: 'test@example.com' }));
+    localStorage.setItem('sessionTimestamp', Date.now().toString());
     
     mockAuthService.verifyToken.mockResolvedValue({
       valid: true,
@@ -221,6 +222,64 @@ describe('LoginScreen Component', () => {
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/overview');
+    });
+  });
+
+  test('fields remain editable after lockout error (EX_7.2)', async () => {
+    mockAuthService.login.mockRejectedValue({
+      message: 'Login failed',
+      code: 'EX_7.2'
+    });
+
+    renderWithProviders(<LoginScreen />);
+    
+    await waitFor(() => {
+      expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+    });
+
+    const emailInput = screen.getByPlaceholderText('Enter your email') as HTMLInputElement;
+    const passwordInput = screen.getByPlaceholderText('Password') as HTMLInputElement;
+    const submitButton = screen.getByText('Sign In');
+
+    fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
+    fireEvent.change(passwordInput, { target: { value: 'password123' } });
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('Too many unsuccessful login attempts. Your account has been locked. Please try again after 15 minutes.')).toBeInTheDocument();
+    });
+
+    // Fields should remain editable
+    expect(emailInput).not.toBeDisabled();
+    expect(passwordInput).not.toBeDisabled();
+  });
+
+  test('success message has green background (success-message class)', async () => {
+    const mockUser = { id: '1', email: 'test@example.com' };
+    mockAuthService.login.mockResolvedValue({
+      success: true,
+      token: 'mock-token',
+      user: mockUser,
+      message: 'Login successful'
+    });
+
+    renderWithProviders(<LoginScreen />);
+    
+    await waitFor(() => {
+      expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+    });
+
+    const emailInput = screen.getByPlaceholderText('Enter your email');
+    const passwordInput = screen.getByPlaceholderText('Password');
+    const submitButton = screen.getByText('Sign In');
+
+    fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
+    fireEvent.change(passwordInput, { target: { value: 'password123' } });
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      const successMessage = screen.getByText('Login successful! Redirecting...');
+      expect(successMessage.closest('.success-message')).not.toBeNull();
     });
   });
 });
