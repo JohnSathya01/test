@@ -3,12 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { validateEmail } from '../../utils/validation';
 import authService from '../../services/authService';
 import LoadingSpinner from '../common/LoadingSpinner';
+import ForgotPasswordConfirmation from './ForgotPasswordConfirmation';
 
 const ForgotPassword: React.FC = () => {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [screenLoading, setScreenLoading] = useState(true);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
@@ -32,17 +32,10 @@ const ForgotPassword: React.FC = () => {
 
     setIsLoading(true);
     setError('');
-    setSuccess('');
 
     try {
-      const response = await authService.forgotPassword({ email });
-      setSuccess(response.message || 'Password reset link sent to your email');
+      await authService.forgotPassword({ email });
       setIsSubmitted(true);
-      
-      // Auto redirect after 5 seconds
-      setTimeout(() => {
-        navigate('/login');
-      }, 5000);
     } catch (err: any) {
       setError(err.message || 'Failed to send reset email. Please try again.');
     } finally {
@@ -58,6 +51,11 @@ const ForgotPassword: React.FC = () => {
     );
   }
 
+  // Show confirmation screen after successful submission
+  if (isSubmitted) {
+    return <ForgotPasswordConfirmation />;
+  }
+
   return (
     <div className="auth-container">
       <div className="auth-card">
@@ -69,46 +67,37 @@ const ForgotPassword: React.FC = () => {
         <p className="auth-subtitle">Enter the email associated with your account</p>
 
         {error && <div className="error-message">{error}</div>}
-        {success && <div className="success-message">{success}</div>}
 
-        {!isSubmitted ? (
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <div className="input-container">
-                <div className="input-icon icon-mail"></div>
-                <input
-                  type="email"
-                  className={`form-input ${error && !validateEmail(email) ? 'error' : ''}`}
-                  placeholder="Enter your email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <div className="input-container">
+              <div className="input-icon icon-mail"></div>
+              <input
+                type="email"
+                className={`form-input ${error && !validateEmail(email) ? 'error' : ''}`}
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
             </div>
-
-            <button
-              type="submit"
-              className="auth-button"
-              disabled={!isFormValid || isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <LoadingSpinner size="small" />
-                  Sending...
-                </>
-              ) : (
-                'Continue'
-              )}
-            </button>
-          </form>
-        ) : (
-          <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <p style={{ marginBottom: '20px', color: '#6b7280' }}>
-              Check your email for the reset link. You will be redirected to login shortly.
-            </p>
           </div>
-        )}
+
+          <button
+            type="submit"
+            className="auth-button"
+            disabled={!isFormValid || isLoading}
+          >
+            {isLoading ? (
+              <>
+                <LoadingSpinner size="small" />
+                Sending...
+              </>
+            ) : (
+              'Continue'
+            )}
+          </button>
+        </form>
 
         <Link to="/login" className="back-link">
           <div className="icon-arrow-left"></div>

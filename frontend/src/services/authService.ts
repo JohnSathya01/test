@@ -25,6 +25,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('authToken');
       localStorage.removeItem('user');
+      localStorage.removeItem('sessionTimestamp');
       window.location.href = '/login';
     }
     return Promise.reject(error);
@@ -54,6 +55,11 @@ export interface ResetPasswordRequest {
   token: string;
   newPassword: string;
   confirmPassword: string;
+}
+
+export interface VerifyResetTokenResponse {
+  valid: boolean;
+  email?: string;
 }
 
 export interface ApiError {
@@ -101,6 +107,15 @@ export const authService = {
   verifyToken: async (): Promise<{ valid: boolean; user?: any }> => {
     try {
       const response = await api.get('/auth/verify');
+      return response.data;
+    } catch (error) {
+      return { valid: false };
+    }
+  },
+
+  verifyResetToken: async (token: string): Promise<VerifyResetTokenResponse> => {
+    try {
+      const response = await api.get(`/auth/verify-reset-token?token=${encodeURIComponent(token)}`);
       return response.data;
     } catch (error) {
       return { valid: false };

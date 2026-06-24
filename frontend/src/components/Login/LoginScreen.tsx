@@ -56,7 +56,7 @@ const LoginScreen: React.FC = () => {
           setError('Please enter a valid email address or password');
           break;
         case 'EX_7.2':
-          setError('Too many unsuccessful login attempts. Please try again later.');
+          setError('Too many unsuccessful login attempts. Your account has been locked. Please try again after 15 minutes.');
           break;
         case 'EX_7.3':
           setError('Invalid credentials');
@@ -127,6 +127,7 @@ const LoginScreen: React.FC = () => {
                 type="button"
                 className="password-toggle"
                 onClick={togglePasswordVisibility}
+                aria-label="toggle password"
               >
                 <div className={showPassword ? 'icon-eye-off' : 'icon-eye'}></div>
               </button>

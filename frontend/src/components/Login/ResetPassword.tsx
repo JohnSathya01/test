@@ -14,27 +14,40 @@ const ResetPassword: React.FC = () => {
   const [success, setSuccess] = useState('');
   const [screenLoading, setScreenLoading] = useState(true);
   const [email, setEmail] = useState('');
+  const [tokenValid, setTokenValid] = useState<boolean | null>(null);
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
 
   useEffect(() => {
-    // Simulate screen loading and extract email from token if available
-    const timer = setTimeout(() => {
+    const init = async () => {
+      // Simulate screen loading
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       setScreenLoading(false);
-      // In a real app, you might decode the token to get the email
-      // For now, we'll use a placeholder
-      setEmail('admin@zeb.co');
-    }, 1000);
 
-    return () => clearTimeout(timer);
-  }, []);
+      // Verify reset token to get email
+      if (token) {
+        try {
+          const result = await authService.verifyResetToken(token);
+          if (result.valid && result.email) {
+            setEmail(result.email);
+            setTokenValid(true);
+          } else {
+            setTokenValid(false);
+            setError('This recovery link has expired.');
+          }
+        } catch {
+          setTokenValid(false);
+          setError('This recovery link has expired.');
+        }
+      } else {
+        setTokenValid(false);
+        setError('Invalid or missing reset token');
+      }
+    };
 
-  useEffect(() => {
-    if (!token) {
-      setError('Invalid or missing reset token');
-    }
+    init();
   }, [token]);
 
   const passwordValidation = validatePassword(newPassword);
@@ -81,7 +94,7 @@ const ResetPassword: React.FC = () => {
       if (err.message.includes('expired')) {
         setError('This recovery link has expired.');
       } else if (err.code === 'EX_7.4') {
-        setError('New Password and Confirm Password do not match. Please try again.');
+        setError('Passwords do not match. Please re-enter.');
       } else {
         setError(err.message || 'Failed to reset password. Please try again.');
       }
@@ -111,7 +124,7 @@ const ResetPassword: React.FC = () => {
         {error && <div className="error-message">{error}</div>}
         {success && <div className="success-message">{success}</div>}
 
-        {!success && (
+        {!success && tokenValid && (
           <form onSubmit={handleSubmit}>
             <div className="form-group">
               <div className="input-container">
@@ -128,6 +141,7 @@ const ResetPassword: React.FC = () => {
                   type="button"
                   className="password-toggle"
                   onClick={() => setShowNewPassword(!showNewPassword)}
+                  aria-label="toggle new password"
                 >
                   <div className={showNewPassword ? 'icon-eye-off' : 'icon-eye'}></div>
                 </button>
@@ -156,6 +170,7 @@ const ResetPassword: React.FC = () => {
                   type="button"
                   className="password-toggle"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  aria-label="toggle confirm password"
                 >
                   <div className={showConfirmPassword ? 'icon-eye-off' : 'icon-eye'}></div>
                 </button>

@@ -66,7 +66,7 @@ describe('ForgotPassword Component', () => {
     expect(submitButton).not.toBeDisabled();
   });
 
-  test('handles successful password reset request', async () => {
+  test('handles successful password reset request and shows confirmation screen', async () => {
     mockAuthService.forgotPassword.mockResolvedValue({
       success: true,
       message: 'Password reset link sent to your email'
@@ -84,17 +84,21 @@ describe('ForgotPassword Component', () => {
     fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
     fireEvent.click(submitButton);
 
+    // Wait for confirmation screen to appear
     await waitFor(() => {
-      expect(screen.getByText('Password reset link sent to your email')).toBeInTheDocument();
+      expect(screen.getByText('Check your email')).toBeInTheDocument();
     });
 
     expect(mockAuthService.forgotPassword).toHaveBeenCalledWith({
       email: 'test@example.com'
     });
 
-    // Check that form is hidden after successful submission
+    // Form should be hidden after successful submission
     expect(screen.queryByText('Continue')).not.toBeInTheDocument();
-    expect(screen.getByText('Check your email for the reset link. You will be redirected to login shortly.')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Enter your email')).not.toBeInTheDocument();
+
+    // Confirmation message should be displayed
+    expect(screen.getByText('A password reset link has been sent to your email. The link expires in 10 minutes.')).toBeInTheDocument();
   });
 
   test('handles forgot password error', async () => {
@@ -138,9 +142,7 @@ describe('ForgotPassword Component', () => {
     expect(submitButton).toBeDisabled();
   });
 
-  test('auto-redirects to login after successful submission', async () => {
-    jest.useFakeTimers();
-    
+  test('back to sign in link navigates to /login from confirmation screen', async () => {
     mockAuthService.forgotPassword.mockResolvedValue({
       success: true,
       message: 'Password reset link sent to your email'
@@ -158,19 +160,17 @@ describe('ForgotPassword Component', () => {
     fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
     fireEvent.click(submitButton);
 
+    // Wait for confirmation screen
     await waitFor(() => {
-      expect(screen.getByText('Password reset link sent to your email')).toBeInTheDocument();
+      expect(screen.getByText('Check your email')).toBeInTheDocument();
     });
 
-    // Fast-forward time
-    jest.advanceTimersByTime(5000);
-
-    expect(mockNavigate).toHaveBeenCalledWith('/login');
-    
-    jest.useRealTimers();
+    // Back to sign in link should be present on confirmation screen
+    const backLink = screen.getByText('Back to sign in');
+    expect(backLink.closest('a')).toHaveAttribute('href', '/login');
   });
 
-  test('back to sign in link works', async () => {
+  test('back to sign in link works from initial form', async () => {
     renderWithRouter(<ForgotPassword />);
     
     await waitFor(() => {
