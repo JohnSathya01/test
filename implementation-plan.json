@@ -1,0 +1,70 @@
+{
+  "summary": "The Python/FastAPI implementation is complete and production-quality, satisfying all requirements. The JavaScript/Node.js implementation in src/ has the core JobQueueManager logic (submit, status, cancel, worker pool, retry with exponential backoff, state transitions, EventEmitter lifecycle events) but LACKS the HTTP API layer, task executor registry, configuration module, test suite, and a proper server entry point. This plan completes the JS implementation to achieve feature parity with the Python version. Specifically: (1) Create src/config.js for environment-based configuration (worker concurrency, max retries, backoff settings, port). (2) Create src/executor.js with a TaskExecutor registry mapping task_name strings to handler functions, including built-in tasks (data_processing, echo, slow_task, failing_task, flaky_task) mirroring the Python executor.py. (3) Create src/server.js with Express routes exposing POST /jobs (create job), GET /jobs/:jobId (get status), DELETE /jobs/:jobId (cancel job), and GET /health (health check), with proper request validation, error handling (404 for invalid job ID, 409 for cancellation conflicts, 422 for validation errors), and lifespan management (start worker pool on startup, graceful shutdown). (4) Update src/index.js to serve as the main entry point that boots the Express server and wires together config, executor, JobQueueManager, and routes. (5) Create src/__tests__/jobQueue.test.js with a comprehensive Jest test suite covering state transitions, API integration via supertest, retry/failure handling, concurrency, and all edge cases (invalid job ID, cancelling completed/cancelled jobs, retry limit exceeded, worker failure). (6) Update package.json to add express and supertest dependencies and start/dev scripts. (7) Update README.md to document both implementations.",
+  "steps": [
+    {
+      "description": "REQ-01: Create src/config.js — Environment-based configuration module that reads worker concurrency (JOB_QUEUE_WORKER_CONCURRENCY, default 4), max retries (JOB_QUEUE_MAX_RETRIES, default 3), base retry backoff ms (JOB_QUEUE_BASE_RETRY_BACKOFF_MS, default 100), max retry backoff ms (JOB_QUEUE_MAX_RETRY_BACKOFF_MS, default 30000), worker poll interval ms (JOB_QUEUE_WORKER_POLL_INTERVAL_MS, default 10), and server port (PORT, default 3000). Export a Config class or singleton object mirroring the Python config.py pattern.",
+      "relatedCriteria": ["ac_17", "ac_18", "ac_33"]
+    },
+    {
+      "description": "REQ-02: Create src/executor.js — TaskExecutor registry that maps task_name strings to handler functions, mirroring Python executor.py. Include register(taskName, handler) and execute(job) methods. Register built-in tasks: data_processing (simulates processing with delay, returns {output: 'processed_' + input}), echo (returns payload), slow_task (sleeps for payload.duration ms), failing_task (always throws), flaky_task (fails until payload._attempt >= fail_until_attempt, then succeeds). The executor should accept a job object with {taskName, payload} and invoke the registered handler with the payload.",
+      "relatedCriteria": ["ac_0", "ac_1", "ac_3"]
+    },
+    {
+      "description": "REQ-03: Adapt JobQueueManager to work with task_name + payload instead of raw function — Update src/jobQueue.js submitJob method to accept (taskName, payload, options) instead of (taskFn, options). Store taskName and payload on the Job object. Integrate TaskExecutor so workers call executor.execute(job) rather than job.taskFn(). This aligns the JS implementation with the Python manager/executor pattern and enables the HTTP API to submit jobs by task name.",
+      "relatedCriteria": ["ac_0", "ac_1", "ac_7"]
+    },
+    {
+      "description": "REQ-04: Add exponential backoff retry mechanism to JobQueueManager — Ensure src/jobQueue.js implements configurable exponential backoff: backoff = baseBackoffMs * 2^(attempt-1), capped at maxBackoffMs. The current implementation uses a fixed retryBackoffMs; upgrade it to use exponential backoff from config. Log each retry attempt with backoff duration. When retry limit is exceeded, transition job to FAILED permanently with error message.",
+      "relatedCriteria": ["ac_3", "ac_18", "ac_28", "ac_33"]
+    },
+    {
+      "description": "REQ-05: Create src/server.js — Express HTTP server with three API endpoints and a health check. POST /jobs: accept {task_name, payload}, validate task_name is required (422 if missing), submit job via manager, return {job_id, status} with 201 status. GET /jobs/:jobId: fetch job status, return {job_id, status, retry_count, result, error, task_name, max_retries} with 200, or 404 with {detail, job_id} if not found. DELETE /jobs/:jobId: cancel job, return {job_id, status: 'cancelled'} with 200, or 404 if not found, or 409 if job is in terminal state (completed/failed/cancelled). GET /health: return {status: 'ok', workers, queue_size, total_jobs}. Use Express JSON body parser. Export the Express app for testing and a startServer function for production use.",
+      "relatedCriteria": ["ac_4", "ac_5", "ac_6", "ac_7", "ac_8", "ac_9", "ac_25", "ac_26", "ac_27"]
+    },
+    {
+      "description": "REQ-06: Implement request validation and error handling in Express routes — POST /jobs must validate that task_name is a non-empty string (return 422 with descriptive error if missing/empty). Payload defaults to empty object if not provided. GET /jobs/:jobId must catch 'Invalid Job ID' errors and return 404 with {detail: 'Invalid Job ID: {jobId} not found', job_id: jobId}. DELETE /jobs/:jobId must catch 'Invalid Job ID' (404), 'Cannot cancel completed job' (409), 'Job already cancelled' (409), 'Cannot cancel failed job' (409), and any other cancellation errors (409). All error responses should follow a consistent {detail, job_id?} schema matching the Python ErrorResponse model.",
+      "relatedCriteria": ["ac_25", "ac_26", "ac_27", "ac_24"]
+    },
+    {
+      "description": "REQ-07: Implement server lifecycle management — On server startup, create JobQueueManager with config values, register built-in task executors, and call manager.start() to boot the worker pool. On shutdown (SIGINT/SIGTERM or server.close), call manager.stop() to gracefully drain workers. Wire the executor into the manager so workers process jobs via the task executor registry. Ensure the Express app and manager are accessible for testing (export app instance with manager attached).",
+      "relatedCriteria": ["ac_1", "ac_2", "ac_16", "ac_31"]
+    },
+    {
+      "description": "REQ-08: Update src/index.js — Replace the simple re-export with a proper server entry point that imports config, creates the JobQueueManager with config values, registers the TaskExecutor, starts the worker pool, creates the Express app from server.js, and listens on the configured port. Log startup info (port, worker count, max retries). Handle graceful shutdown on SIGINT/SIGTERM.",
+      "relatedCriteria": ["ac_1", "ac_16", "ac_17"]
+    },
+    {
+      "description": "REQ-09: Create src/__tests__/jobQueue.test.js — Jest test suite covering: (a) Job model state transitions: queued→running, running→completed, running→failed, queued→cancelled, running→cancelled, and invalid transitions (queued→completed, completed→running, failed→running, cancelled→anything). (b) POST /jobs API: successful creation returns 201 with job_id and 'queued' status, missing task_name returns 422, empty payload defaults work. (c) GET /jobs/:jobId API: returns correct status for queued/running/completed jobs, completed job exposes result payload, invalid job ID returns 404. (d) DELETE /jobs/:jobId API: cancel queued job returns 200 with 'cancelled', cancel invalid ID returns 404, cancel completed job returns 409, cancel already-cancelled job returns 409. (e) Retry/failure: failing_task ends in FAILED with retry_count = maxRetries and error message, flaky_task succeeds after retries with retry_count >= 1. (f) Concurrency: multiple slow_task jobs complete faster than sequential time. (g) Health check returns 200 with status 'ok'. Use supertest for API integration tests.",
+      "relatedCriteria": ["ac_0", "ac_1", "ac_2", "ac_3", "ac_4", "ac_5", "ac_6", "ac_7", "ac_8", "ac_9", "ac_10", "ac_11", "ac_12", "ac_13", "ac_14", "ac_15", "ac_16", "ac_17", "ac_18", "ac_19", "ac_20", "ac_21", "ac_22", "ac_23", "ac_24", "ac_25", "ac_26", "ac_27", "ac_28", "ac_29", "ac_30", "ac_31", "ac_32", "ac_34"]
+    },
+    {
+      "description": "REQ-10: Update package.json — Add 'express' to dependencies, add 'supertest' to devDependencies, add 'start' script (node src/index.js), add 'dev' script (optional nodemon). Ensure Jest test script remains 'jest --verbose'. Add jest configuration if needed for test file patterns (src/__tests__/**/*.test.js).",
+      "relatedCriteria": ["ac_7", "ac_8", "ac_9"]
+    },
+    {
+      "description": "REQ-11: Update README.md — Add a section documenting the JavaScript/Node.js implementation alongside the existing Python documentation. Document the JS API endpoints, configuration environment variables, how to install dependencies (npm install), how to start the server (npm start), how to run tests (npm test), built-in task handlers, and architecture overview for the JS files (src/index.js, src/server.js, src/jobQueue.js, src/executor.js, src/config.js).",
+      "relatedCriteria": ["ac_0", "ac_4", "ac_5", "ac_6", "ac_7", "ac_8", "ac_9"]
+    },
+    {
+      "description": "REQ-12: Ensure thread-safe/concurrency-safe access in JS implementation — Verify that the JobQueueManager's queue operations are safe under concurrent worker access. The current _dequeue uses a simple processingLock flag which is not truly atomic in JS (though Node.js is single-threaded, async yields can cause race conditions). Replace with a proper async-safe dequeue mechanism using a promise-based lock or by leveraging Node's single-threaded event loop correctly. Ensure job state transitions are guarded so concurrent cancel + process operations don't cause invalid states. Add a test for concurrent cancel-and-process race condition.",
+      "relatedCriteria": ["ac_30", "ac_31", "ac_32"]
+    },
+    {
+      "description": "REQ-13: Add job lifecycle logging to JS implementation — Ensure every job state transition (created/queued, started/running, completed, failed, cancelled, retry) is logged with timestamps via job.addLog(). Verify logs are accessible through the GET /jobs/:jobId endpoint (either included in response or available via a query param). Mirror the Python implementation's logging behavior where each transition appends a timestamped log entry to the job's log array.",
+      "relatedCriteria": ["ac_34"]
+    }
+  ],
+  "affectedFiles": [
+    "src/jobQueue.js",
+    "src/index.js",
+    "package.json",
+    "README.md"
+  ],
+  "newFiles": [
+    "src/config.js",
+    "src/executor.js",
+    "src/server.js",
+    "src/__tests__/jobQueue.test.js"
+  ],
+  "estimatedChanges": 12
+}
